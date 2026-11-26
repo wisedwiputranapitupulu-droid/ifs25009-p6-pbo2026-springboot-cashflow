@@ -11,6 +11,8 @@ Package: `org.delcom.ifs25009springbootcashflow` - Java 21 atau lebih baru.
 3. Jalankan `.\mvnw.cmd spring-boot:run` di Windows atau `./mvnw spring-boot:run` di Linux/macOS.
 4. Buka `http://localhost:8080` di browser. Jangan ketik alamat URL tersebut sebagai perintah di terminal. Jika port 8080 sedang dipakai, ubah `APP_PORT` di `.env` (misalnya menjadi `8081`) dan buka port itu.
 
+Build Maven menggunakan profil Vaadin produksi secara default agar aplikasi siap dijalankan sebagai JAR tanpa menyiapkan frontend saat startup. Build frontend pertama kali dapat memerlukan waktu lebih lama.
+
 ## Menjalankan dengan Docker
 Docker Compose menjalankan aplikasi dan PostgreSQL bersama-sama. PostgreSQL tidak dipublikasikan ke jaringan host, dan data database serta file unggahan disimpan di named volumes.
 
@@ -19,7 +21,7 @@ Docker Compose menjalankan aplikasi dan PostgreSQL bersama-sama. PostgreSQL tida
 3. Buka `http://localhost:8080`, atau port yang disetel melalui `APP_PORT`.
 4. Lihat log dengan `docker compose logs -f app`; hentikan layanan dengan `docker compose down`. Perintah ini mempertahankan data.
 
-Di server, pasang Docker Engine dan Docker Compose, buka port `APP_PORT` pada firewall, lalu arahkan reverse proxy HTTPS ke port aplikasi. Untuk pembaruan, jalankan kembali `docker compose up --build -d`. Jangan gunakan `docker compose down -v` kecuali memang ingin menghapus data database dan unggahan.
+Di server, pasang Docker Engine dan Docker Compose, buka port `APP_PORT` pada firewall, lalu arahkan reverse proxy HTTPS ke port aplikasi. Jika menjalankan JAR langsung melalui platform deployment, atur `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, dan `DB_PASSWORD` ke PostgreSQL yang dapat dijangkau dari server; jangan gunakan `DB_HOST=localhost` kecuali PostgreSQL berjalan pada mesin/container yang sama. Pastikan juga `ROOT_*`, `OPENAI_*`, dan `UPLOAD_DIR` sesuai lingkungan server. Untuk pembaruan Docker, jalankan kembali `docker compose up --build -d`. Jangan gunakan `docker compose down -v` kecuali memang ingin menghapus data database dan unggahan.
 
 ## CI/CD Jenkins + SonarQube + Delcom
 Pipeline di [Jenkinsfile](./Jenkinsfile) menjalankan build dan tes Java, Trivy, analisis SonarQube, quality gate, lalu mengemas source untuk deployment Delcom pada branch `main`.

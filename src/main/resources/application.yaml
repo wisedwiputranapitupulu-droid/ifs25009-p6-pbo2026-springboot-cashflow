@@ -32,6 +32,7 @@ app:
   upload-dir: ${UPLOAD_DIR:uploads}
 
 vaadin:
+  productionMode: true
   launch-browser: false
   liveReload:
     enabled: true

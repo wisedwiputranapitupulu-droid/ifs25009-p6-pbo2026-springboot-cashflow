@@ -129,6 +129,9 @@
     <profiles>
         <profile>
             <id>production</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <dependencies>
                 <dependency>
                     <groupId>com.vaadin</groupId>

@@ -29,7 +29,7 @@ pipeline {
                 sh '''
                     set -eu
                     chmod +x ./mvnw
-                    ./mvnw -B -ntp clean verify
+                    ./mvnw -B -ntp -Pproduction clean verify
                 '''
             }
         }
