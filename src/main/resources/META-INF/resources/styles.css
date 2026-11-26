@@ -1,0 +1,85 @@
+/* ===== Cursor pointer pada elemen interaktif ===== */
+vaadin-button,
+vaadin-menu-bar-button,
+vaadin-menu-bar-item,
+vaadin-context-menu-item,
+vaadin-tab,
+vaadin-drawer-toggle,
+vaadin-upload-button,
+vaadin-grid-sorter,
+vaadin-side-nav-item::part(item),
+vaadin-avatar,
+a,
+.pointer,
+.proof-thumb,
+.preview-image {
+  cursor: pointer;
+}
+vaadin-button[disabled],
+vaadin-menu-bar-button[disabled],
+vaadin-menu-bar-item[disabled],
+vaadin-context-menu-item[disabled] {
+  cursor: not-allowed;
+}
+
+/* ===== Dialog modal: header biru primer, footer abu-abu, tombol di kanan ===== */
+vaadin-dialog-overlay.app-dialog::part(header) {
+  background: #2563EB;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+vaadin-dialog-overlay.app-dialog::part(footer) {
+  background: #F3F4F6;
+  border-top: 1px solid #D1D5DB;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.app-dialog-title { font-size: 1.1rem; font-weight: 600; color: #FFFFFF; }
+.app-dialog-badge {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+}
+
+/* ===== Preview gambar ===== */
+.preview-box { max-height: 65vh; overflow: auto; text-align: center; }
+.preview-image { max-width: none; transition: width 0.15s ease; }
+.proof-thumb { height: 36px; width: 36px; object-fit: cover; border-radius: 6px; }
+
+/* ===== Layout ===== */
+.app-title { font-size: 1.25rem; margin: 0; padding: 1rem; color: #2563EB; }
+.app-header { display: flex; align-items: center; width: 100%; padding-right: 1rem; }
+.grow { flex-grow: 1; }
+.page-card {
+  background: var(--lumo-base-color);
+  border-radius: 12px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+  padding: 1.5rem;
+}
+.auth-page { background: #EEF2FF; }
+.auth-card { width: min(420px, 92vw); display: flex; flex-direction: column; gap: 0.75rem; }
+.profile-card { max-width: 520px; display: flex; flex-direction: column; gap: 0.75rem; }
+.toolbar { gap: 0.75rem; align-items: flex-end; }
+
+/* ===== Kartu ringkasan ===== */
+.summary-card {
+  flex: 1 1 200px;
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--lumo-base-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  border-left: 5px solid #6B7280;
+}
+.summary-label { font-size: 0.8rem; color: var(--lumo-secondary-text-color); }
+.summary-value { font-size: 1.35rem; font-weight: 700; }
+.card-income { border-left-color: #16A34A; }
+.card-expense { border-left-color: #DC2626; }
+.card-balance { border-left-color: #2563EB; }
+.app-grid { min-height: 260px; }
