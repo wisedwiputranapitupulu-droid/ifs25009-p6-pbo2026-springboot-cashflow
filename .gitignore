@@ -9,6 +9,7 @@ HELP.md
 uploads/
 
 ### Maven ###
+.m2/
 target/
 pom.xml.tag
 pom.xml.releaseBackup

@@ -29,7 +29,10 @@ pipeline {
                 sh '''
                     set -eu
                     chmod +x ./mvnw
-                    ./mvnw -B -ntp -Pproduction clean verify
+                    mkdir -p .m2/repository
+                    ./mvnw -B -ntp \
+                        -Dmaven.repo.local="$WORKSPACE/.m2/repository" \
+                        -Pproduction clean verify
                 '''
             }
         }
@@ -39,17 +42,20 @@ pipeline {
                 docker {
                     image 'aquasec/trivy:0.74.0'
                     reuseNode true
-                    args '--entrypoint="" -e HOME=/tmp -e XDG_CACHE_HOME=/tmp/.cache'
+                    args '--entrypoint=""'
                 }
             }
             steps {
                 sh '''
                     set -eu
+                    export HOME="$WORKSPACE"
+                    export XDG_CACHE_HOME="$WORKSPACE/.cache"
                     mkdir -p .trivy-cache
                     trivy fs \
                         --cache-dir .trivy-cache \
                         --scanners vuln \
                         --severity HIGH,CRITICAL \
+                        --skip-dirs .m2 \
                         --format sarif \
                         --output trivy-results.sarif \
                         --exit-code 1 \
