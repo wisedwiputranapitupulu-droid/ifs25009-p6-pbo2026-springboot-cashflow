@@ -4,8 +4,8 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.avatar.Avatar;
-import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
@@ -45,7 +45,7 @@ public class MainLayout extends AppLayout implements BeforeEnterObserver {
     }
 
     private void build(User user) {
-        H1 title = new H1("Cashflow");
+        Span title = new Span("Cashflow");
         title.addClassName("app-title");
         addToDrawer(new Div(title));
 
@@ -76,6 +76,7 @@ public class MainLayout extends AppLayout implements BeforeEnterObserver {
         spacer.addClassName("grow");
         Div header = new Div(spacer, menu);
         header.addClassName("app-header");
+        header.getElement().setAttribute("role", "banner");
         addToNavbar(new DrawerToggle(), header);
     }
 }

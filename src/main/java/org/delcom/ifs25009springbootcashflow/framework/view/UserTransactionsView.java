@@ -4,7 +4,7 @@ import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -32,7 +32,7 @@ public class UserTransactionsView extends VerticalLayout implements HasUrlParame
     private final transient UserUseCase userUseCase;
     private final transient IUserRepository users;
     private final transient FinancePresenter presenter;
-    private final H2 title = new H2("Transaksi pengguna");
+    private final H1 title = new H1("Transaksi pengguna");
     private final Span summary = new Span();
     private final Grid<Transaction> grid;
     private int targetUserId;
@@ -43,6 +43,7 @@ public class UserTransactionsView extends VerticalLayout implements HasUrlParame
         this.userUseCase = userUseCase;
         this.users = users;
         this.presenter = presenter;
+        getElement().setAttribute("role", "main");
         setSizeFull();
         grid = TransactionGrid.create(presenter, null);
         Button back = new Button("Kembali", VaadinIcon.ARROW_LEFT.create(),

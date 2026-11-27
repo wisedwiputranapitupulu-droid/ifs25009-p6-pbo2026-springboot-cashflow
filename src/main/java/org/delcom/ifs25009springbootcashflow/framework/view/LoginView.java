@@ -5,7 +5,7 @@ import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
@@ -34,6 +34,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
     public LoginView(AuthUseCase authUseCase, IUserRepository users) {
         this.authUseCase = authUseCase;
         this.users = users;
+        getElement().setAttribute("role", "main");
         setSizeFull();
         setAlignItems(Alignment.CENTER);
         setJustifyContentMode(JustifyContentMode.CENTER);
@@ -55,7 +56,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
                 e -> UI.getCurrent().navigate(RegisterView.class));
         toRegister.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
-        PageCard card = new PageCard(new H2("Masuk ke Cashflow"),
+        PageCard card = new PageCard(new H1("Masuk ke Cashflow"),
                 new Paragraph("Catat pemasukan dan pengeluaran Anda."),
                 username, password, progress, loginButton, toRegister);
         card.addClassName("auth-card");

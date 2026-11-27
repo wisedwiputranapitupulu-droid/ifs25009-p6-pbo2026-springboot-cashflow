@@ -5,7 +5,7 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.avatar.Avatar;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
@@ -45,6 +45,7 @@ public class ProfileView extends VerticalLayout {
         this.users = users;
         this.fileStorage = fileStorage;
         this.presenter = presenter;
+        getElement().setAttribute("role", "main");
         setPadding(true);
 
         avatar.setHeight("96px");
@@ -68,7 +69,7 @@ public class ProfileView extends VerticalLayout {
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         save.addClickListener(e -> save(save));
 
-        PageCard card = new PageCard(new H2("Profil Saya"), avatar, fullName, newPassword, upload, progress, save);
+        PageCard card = new PageCard(new H1("Profil Saya"), avatar, fullName, newPassword, upload, progress, save);
         card.addClassName("profile-card");
         add(card);
     }

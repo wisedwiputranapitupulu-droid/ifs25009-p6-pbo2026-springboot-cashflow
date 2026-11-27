@@ -7,6 +7,7 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexLayout;
@@ -65,11 +66,12 @@ public class FinanceView extends VerticalLayout {
         this.presenter = presenter;
         this.fileStorage = fileStorage;
         this.users = users;
+        getElement().setAttribute("role", "main");
         setSizeFull();
         setPadding(true);
 
         grid = TransactionGrid.create(presenter, this::confirmDelete);
-        add(summaryCards(), toolbar(), grid);
+        add(new H1("Ringkasan Cashflow"), summaryCards(), toolbar(), grid);
         expand(grid);
     }
 

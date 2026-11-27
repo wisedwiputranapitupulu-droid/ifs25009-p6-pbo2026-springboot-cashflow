@@ -5,7 +5,7 @@ import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.BeforeEnterEvent;
 import com.vaadin.flow.router.BeforeEnterObserver;
@@ -27,6 +27,7 @@ public class UsersView extends VerticalLayout implements BeforeEnterObserver {
     public UsersView(UserUseCase userUseCase, IUserRepository users) {
         this.userUseCase = userUseCase;
         this.users = users;
+        getElement().setAttribute("role", "main");
         setSizeFull();
         GridStyles.apply(grid);
         grid.addColumn(User::getId).setHeader("ID").setSortable(true).setAutoWidth(true).setFlexGrow(0);
@@ -39,7 +40,7 @@ public class UsersView extends VerticalLayout implements BeforeEnterObserver {
             b.addThemeVariants(ButtonVariant.LUMO_SMALL);
             return b;
         }).setHeader("Aksi").setAutoWidth(true).setFlexGrow(0);
-        add(new H2("Daftar Pengguna"), grid);
+        add(new H1("Daftar Pengguna"), grid);
         expand(grid);
     }
 
