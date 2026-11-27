@@ -36,6 +36,7 @@ Sebelum menjalankan pipeline:
 ## Build dan tes
 - JAR produksi: `.\mvnw.cmd clean package -Pproduction` (Windows) atau `./mvnw clean package -Pproduction` (Linux/macOS), lalu jalankan dengan `java -jar target/ifs25009-p6-pbo2026-springboot-cashflow-0.0.1-SNAPSHOT.jar`.
 - Tes + coverage: `.\mvnw.cmd clean verify` atau `./mvnw clean verify` (laporan: `target/site/jacoco/index.html`).
+- Bundle frontend produksi Vaadin dan konfigurasi Vite disimpan di repository agar deploy memakai bundle yang sudah dioptimalkan; setelah mengubah frontend atau dependensinya, jalankan build produksi lalu commit pembaruan `src/main/bundles/prod.bundle`, `package.json`, dan `package-lock.json`. Source map dihasilkan untuk membantu audit dan debugging browser.
 
 ## Struktur
 ```

@@ -32,7 +32,7 @@ src/main/frontend/index.html
 vite.generated.ts
 webpack.generated.js
 types.d.ts
-package-lock.json
+tsconfig.json
 yarn.lock
 bun.lockb
 .vaadin/
