@@ -1,89 +1,205 @@
 pipeline {
+
     agent any
 
     options {
         timestamps()
         skipDefaultCheckout(true)
+        // Stop later stages if a publisher marks the build UNSTABLE/FAILURE mid-run
         skipStagesAfterUnstable()
     }
 
     environment {
-        JENKINS_CONTAINER = 'cicd-jenkins'
+        MAVEN_OPTS = '-Xmx2g'
+        JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
+        // Cache Maven bersama di volume Jenkins, persist antar build/job (hindari 429)
+        MAVEN_LOCAL_REPO = '/var/jenkins_home/.m2/repository'
     }
 
     stages {
+
+        // ============================================================
+        // CHECKOUT
+        // ============================================================
         stage('Checkout') {
+            agent {
+                docker {
+                    image 'alpine:3.21'
+                    reuseNode true
+                }
+            }
+
             steps {
                 checkout scm
             }
         }
 
+        // ============================================================
+        // BUILD & TEST (Maven + Jacoco 100%)
+        // ============================================================
         stage('Build & Test') {
             agent {
                 docker {
-                    image 'maven:3.9.9-eclipse-temurin-21'
+                    image 'eclipse-temurin:25-jdk'
                     reuseNode true
+                    args '-u root -v /var/jenkins_home/.m2:/var/jenkins_home/.m2'
                 }
             }
+
             steps {
                 sh '''
-                    set -eu
-                    chmod +x ./mvnw
-                    mkdir -p .m2/repository
-                    ./mvnw -B -ntp \
-                        -Dmaven.repo.local="$WORKSPACE/.m2/repository" \
-                        -Pproduction clean verify
+                    set -e
+
+                    echo "=== Java Runtime ==="
+                    java -version
+
+                    chmod +x mvnw
+                    mkdir -p "$MAVEN_LOCAL_REPO"
+
+                    if [ ! -f .env ]; then
+                        cp .env.example .env
+                    fi
+
+                    echo "=== Maven Clean Verify (Jacoco 100%) ==="
+                    # verify = test + jacoco:check (instruction/branch/line/method/class = 100%)
+                    # -Pproduction = Vaadin frontend production build saat package
+                    # cache Maven persisten agar tidak download ulang (hindari 429 Maven Central)
+                    ./mvnw -B clean verify -Pproduction \
+                        -Dmaven.repo.local="$MAVEN_LOCAL_REPO"
+
+                    echo "=== Build & Tests Passed ==="
+                    ls -lh target/*.jar || true
+                    ls -lh target/site/jacoco/jacoco.xml || true
                 '''
+            }
+
+            post {
+                always {
+                    junit(
+                        allowEmptyResults: true,
+                        testResults: 'target/surefire-reports/*.xml'
+                    )
+                    archiveArtifacts(
+                        artifacts: 'target/site/jacoco/**',
+                        allowEmptyArchive: true
+                    )
+                }
             }
         }
 
+        // ============================================================
+        // TRIVY SECURITY SCAN
+        // ============================================================
         stage('Trivy Security Scan') {
             agent {
                 docker {
-                    image 'aquasec/trivy:0.74.0'
+                    image 'aquasec/trivy:0.76.1'
                     reuseNode true
-                    args '--entrypoint=""'
+
+                    args '''
+                        --entrypoint=""
+                        -e HOME=/tmp
+                        -e XDG_CACHE_HOME=/tmp/.cache
+                        -v /var/jenkins_home/.m2:/var/jenkins_home/.m2
+                    '''
                 }
             }
+
             steps {
                 sh '''
-                    set -eu
-                    export HOME="$WORKSPACE"
-                    export XDG_CACHE_HOME="$WORKSPACE/.cache"
-                    mkdir -p .trivy-cache
+                    set -e
+
+                    mkdir -p .trivy-cache || true
+
+                    # Trivy Java analyzer membaca ~/.m2; HOME container = /tmp.
+                    # Arahkan ke cache Maven bersama yang persist di volume Jenkins.
+                    mkdir -p /tmp/.m2
+                    ln -sfn "$MAVEN_LOCAL_REPO" /tmp/.m2/repository
+
+                    echo "======================================"
+                    echo "        TRIVY SECURITY SCAN"
+                    echo "======================================"
+
+                    echo "=== Trivy Version ==="
+                    trivy --version
+
+                    echo "=== Local Maven cache ==="
+                    ls -ld "$MAVEN_LOCAL_REPO" /tmp/.m2/repository || true
+
+                    echo "=== Trivy Scan ==="
+
                     trivy fs \
                         --cache-dir .trivy-cache \
                         --scanners vuln \
                         --severity HIGH,CRITICAL \
-                        --skip-dirs .m2 \
+                        --offline-scan \
+                        --skip-dirs target \
+                        --skip-dirs .mvn \
+                        --skip-dirs node_modules \
+                        --skip-dirs .trivy-cache \
                         --format sarif \
                         --output trivy-results.sarif \
                         --exit-code 1 \
                         .
+
+                    echo "=== Trivy Result ==="
+                    ls -lh trivy-results.sarif
                 '''
             }
+
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-results.sarif', allowEmptyArchive: true
+                    // failOnError must be false: otherwise Warnings NG can mark the
+                    // whole build FAILURE while later stages still run (all green, badge red).
+                    // Build failure on HIGH/CRITICAL comes from trivy --exit-code 1 above.
+                    recordIssues(
+                        enabledForFailure: true,
+                        failOnError: false,
+                        tools: [
+                            sarif(
+                                id: 'trivy',
+                                name: 'Trivy Security',
+                                pattern: 'trivy-results.sarif'
+                            )
+                        ]
+                    )
                 }
             }
         }
 
+        // ============================================================
+        // SONARQUBE ANALYSIS
+        // ============================================================
         stage('SonarQube Analysis') {
             agent {
                 docker {
                     image 'sonarsource/sonar-scanner-cli:latest'
                     reuseNode true
-                    args '--entrypoint="" --network cicd-network'
+                    args '--network cicd-network'
                 }
             }
+
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    sh 'sonar-scanner'
+                    sh '''
+                        set -e
+
+                        echo "=== SonarQube Analysis ==="
+
+                        sonar-scanner \
+                            -Dsonar.java.binaries=target/classes \
+                            -Dsonar.java.test.binaries=target/test-classes \
+                            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+
+                        echo "=== SonarQube Analysis Completed ==="
+                    '''
                 }
             }
         }
 
+        // ============================================================
+        // QUALITY GATE
+        // ============================================================
         stage('Quality Gate') {
             steps {
                 timeout(time: 30, unit: 'MINUTES') {
@@ -92,163 +208,340 @@ pipeline {
             }
         }
 
+        // ============================================================
+        // PACKAGE APPLICATION (Spring Boot JAR)
+        // ============================================================
         stage('Package Application') {
             agent {
                 docker {
-                    image 'node:24-alpine'
+                    image 'eclipse-temurin:25-jdk'
                     reuseNode true
                     args '-u root'
                 }
             }
+
             steps {
                 sh '''
-                    set -eu
-                    apk add --no-cache zip
-                    rm -f latest-app.zip
-                    zip -r latest-app.zip \
-                        Dockerfile docker-compose.yml .dockerignore .env.example \
-                        Jenkinsfile mvnw mvnw.cmd pom.xml README.md sonar-project.properties .mvn src \
-                        -x 'src/main/frontend/generated/*'
-                    ls -lh latest-app.zip
+                    set -e
+
+                    echo "======================================"
+                    echo "       CREATING APPLICATION PACKAGE"
+                    echo "======================================"
+
+                    apt-get update -qq
+                    apt-get install -y -qq zip unzip git >/dev/null
+
+                    rm -f latest-app.zip app.jar
+
+                    # Ambil fat JAR Spring Boot (abaikan *.jar.original)
+                    JAR="$(ls -1 target/*-SNAPSHOT.jar 2>/dev/null | grep -v '\\.original$' | head -n 1 || true)"
+                    if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
+                        echo "ERROR: Spring Boot JAR tidak ditemukan di target/"
+                        ls -la target || true
+                        exit 1
+                    fi
+
+                    echo "Using JAR: $JAR"
+                    cp "$JAR" app.jar
+
+                    # ZIP bersih seperti hasil clone GitHub (hanya file tracked),
+                    # lalu tambahkan JAR hasil build di target/ agar deploy zip
+                    # berperilaku sama dengan deploy git.
+                    git -c safe.directory="$PWD" archive --format=zip --output=latest-app.zip HEAD
+                    zip -q latest-app.zip "$JAR"
+
+                    echo "=== Application Package Created ==="
+                    ls -lh latest-app.zip app.jar
+
+                    echo "=== Package Content ==="
+                    unzip -l latest-app.zip
                 '''
             }
         }
 
+        // ============================================================
+        // PUBLISH APPLICATION
+        // ============================================================
         stage('Publish Application') {
+
             steps {
+
+                // ========================================================
+                // 1. ARCHIVE ARTIFACT KE JENKINS
+                // ========================================================
+
+                archiveArtifacts(
+                    artifacts: 'latest-app.zip,app.jar',
+                    fingerprint: true,
+                    allowEmptyArchive: false
+                )
+
                 script {
+
+                    // ====================================================
+                    // 2. BUAT IDENTITAS APPLICATION
+                    // ====================================================
+
                     def appName = env.JOB_NAME
-                            .replaceAll('[^a-zA-Z0-9._-]', '-')
-                            .replaceAll('-+', '-')
-                            .replaceAll('^-|-$', '')
+                        .replaceAll('[^a-zA-Z0-9._-]', '-')
+                        .replaceAll('-+', '-')
+                        .replaceAll('^-|-$', '')
+
                     def buildId = env.BUILD_NUMBER
-                    def contentPath = "/var/jenkins_home/userContent/applications/${appName}/${buildId}"
+
+                    echo "Application Name: ${appName}"
+                    echo "Build ID: ${buildId}"
+
+                    // ====================================================
+                    // 3. COPY KE USER CONTENT
+                    // ====================================================
 
                     sh """
-                        set -eu
-                        docker exec "${env.JENKINS_CONTAINER}" mkdir -p "${contentPath}"
-                        docker cp latest-app.zip "${env.JENKINS_CONTAINER}:${contentPath}/latest-app.zip"
-                    """
-                    archiveArtifacts artifacts: 'latest-app.zip', fingerprint: true
+                        set -e
 
-                    def buildUrl = env.BUILD_URL
-                    def jobPath = buildUrl == null ? -1 : buildUrl.indexOf('/job/')
-                    if (jobPath < 0) {
-                        error('Jenkins BUILD_URL harus berisi /job/ agar artifact dapat dipublikasikan.')
-                    }
-                    def jenkinsBaseUrl = buildUrl.substring(0, jobPath)
-                            .replace('localhost', 'host.docker.internal')
-                    env.ARTIFACT_URL = "${jenkinsBaseUrl}/userContent/applications/${appName}/${buildId}/latest-app.zip"
-                    echo "Artifact published at ${env.ARTIFACT_URL}"
+                        echo "======================================"
+                        echo "       PUBLISHING USER CONTENT"
+                        echo "======================================"
+
+                        docker exec cicd-jenkins \\
+                            mkdir -p \\
+                            "/var/jenkins_home/userContent/applications/${appName}/${buildId}"
+
+                        docker cp \\
+                            latest-app.zip \\
+                            "cicd-jenkins:/var/jenkins_home/userContent/applications/${appName}/${buildId}/latest-app.zip"
+
+                        echo "=== Published File ==="
+
+                        docker exec cicd-jenkins \\
+                            ls -lh \\
+                            "/var/jenkins_home/userContent/applications/${appName}/${buildId}/latest-app.zip"
+                    """
+
+                    // ====================================================
+                    // 4. BUAT PUBLIC ARTIFACT URL
+                    // ====================================================
+
+                    def jenkinsBaseUrl = env.BUILD_URL
+                        .substring(0, env.BUILD_URL.indexOf('/job/'))
+                        .replace('localhost', 'host.docker.internal')
+
+                    env.ARTIFACT_URL =
+                        "${jenkinsBaseUrl}/userContent/applications/${appName}/${buildId}/latest-app.zip"
+
+                    echo "======================================"
+                    echo "       APPLICATION PUBLISHED"
+                    echo "======================================"
+
+                    echo "Artifact URL:"
+                    echo "${env.ARTIFACT_URL}"
                 }
             }
         }
 
+        // ============================================================
+        // DEPLOY APPLICATION
+        // ============================================================
         stage('Deploy Application') {
-            when {
-                expression {
-                    (env.BRANCH_NAME ?: env.GIT_BRANCH ?: '')
-                            .replaceFirst('^origin/', '') == 'main'
-                }
-            }
             agent {
                 docker {
                     image 'curlimages/curl:8.15.0'
                     reuseNode true
-                    args '--entrypoint="" --network cicd-network'
+                    args '--network cicd-network'
                 }
             }
+
             steps {
                 script {
-                    ['URL_REDEPLOY', 'URL_PROGRESS', 'WEBSITE_ID', 'ARTIFACT_URL'].each { name ->
-                        if (!env[name]?.trim()) {
-                            error("Konfigurasi Jenkins ${name} belum diisi.")
+
+                    echo "=========================================="
+                    echo "       START APPLICATION DEPLOYMENT"
+                    echo "=========================================="
+
+                    echo "Artifact URL:"
+                    echo "${env.ARTIFACT_URL}"
+
+                    // ==================================================
+                    // 1. REQUEST REDEPLOYMENT
+                    // ==================================================
+
+                    echo ""
+                    echo "=== Request Redeployment ==="
+
+                    def redeployResponse = sh(
+                        script: '''
+                            set -e
+
+                            curl -sS --fail-with-body \
+                                -X POST "$URL_REDEPLOY" \
+                                -H "Content-Type: application/json" \
+                                -d "{
+                                    \\"token_access\\": \\"$DEPLOY_TOKEN\\",
+                                    \\"website_id\\": \\"$WEBSITE_ID\\",
+                                    \\"source_url\\": \\"$ARTIFACT_URL\\",
+                                    \\"source_type\\": \\"jenkins\\"
+                                }"
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Redeploy Response:"
+                    echo redeployResponse
+
+                    // ==================================================
+                    // 2. POLLING DEPLOYMENT PROGRESS
+                    // ==================================================
+
+                    echo ""
+                    echo "=== Waiting For Deployment ==="
+
+                    def maxAttempts = 120
+                    def attempt = 0
+                    def deploymentStatus = 'IN_PROGRESS'
+
+                    while (deploymentStatus == 'IN_PROGRESS') {
+
+                        attempt++
+
+                        if (attempt > maxAttempts) {
+                            error(
+                                "Deployment timeout. " +
+                                "Status masih IN_PROGRESS setelah " +
+                                "${maxAttempts} attempts."
+                            )
                         }
+
+                        sleep time: 5, unit: 'SECONDS'
+
+                        echo ""
+                        echo "=== Checking Deployment Progress (${attempt}/${maxAttempts}) ==="
+
+                        def progressResponse = sh(
+                            script: '''
+                                set -e
+
+                                curl -sS --fail-with-body \
+                                    -X POST "$URL_PROGRESS" \
+                                    -H "Content-Type: application/json" \
+                                    -d "{
+                                        \\"token_access\\": \\"$DEPLOY_TOKEN\\",
+                                        \\"website_id\\": \\"$WEBSITE_ID\\"
+                                    }"
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Progress Response:"
+                        echo progressResponse
+
+                        // ==================================================
+                        // PARSE JSON
+                        // ==================================================
+
+                        def json = readJSON text: progressResponse
+
+                        deploymentStatus = json?.data?.status
+                            ?.toString()
+                            ?.toUpperCase()
+
+                        if (!deploymentStatus) {
+                            error(
+                                "Response progress tidak memiliki data.status"
+                            )
+                        }
+
+                        echo "Deployment Status: ${deploymentStatus}"
+
+                        // ==================================================
+                        // SUCCESS
+                        // ==================================================
+
+                        if (deploymentStatus == 'SUCCESS') {
+
+                            echo ""
+                            echo "=========================================="
+                            echo "       ✅ DEPLOYMENT SUCCESS"
+                            echo "=========================================="
+
+                            break
+                        }
+
+                        // ==================================================
+                        // FAIL
+                        // ==================================================
+
+                        if (deploymentStatus == 'FAIL') {
+
+                            echo ""
+                            echo "=========================================="
+                            echo "       ❌ DEPLOYMENT FAILED"
+                            echo "=========================================="
+
+                            def deploymentLog =
+                                json?.data?.log
+                                    ?: 'Deployment failed tanpa log.'
+
+                            echo ""
+                            echo "========== DEPLOYMENT LOG =========="
+                            echo deploymentLog
+                            echo "===================================="
+
+                            error(
+                                "Deployment gagal untuk website " +
+                                "${WEBSITE_ID}"
+                            )
+                        }
+
+                        // ==================================================
+                        // OTHER STATUS
+                        // ==================================================
+
+                        echo "Deployment masih berjalan..."
                     }
 
-                    withCredentials([string(credentialsId: 'delcom-deploy-token', variable: 'DEPLOY_TOKEN')]) {
-                        def redeployRequest = groovy.json.JsonOutput.toJson([
-                                token_access: env.DEPLOY_TOKEN,
-                                website_id: env.WEBSITE_ID,
-                                source_url: env.ARTIFACT_URL,
-                                source_type: 'jenkins'
-                        ])
-                        writeFile file: '.delcom-redeploy.json', text: redeployRequest
-
-                        try {
-                            sh '''
-                                set -eu
-                                chmod 600 .delcom-redeploy.json
-                                curl --fail --silent --show-error \
-                                    --header 'Content-Type: application/json' \
-                                    --data-binary @.delcom-redeploy.json \
-                                    "$URL_REDEPLOY" >/dev/null
-                            '''
-
-                            timeout(time: 15, unit: 'MINUTES') {
-                                def deploymentStatus = 'IN_PROGRESS'
-                                for (int attempt = 1; attempt <= 120; attempt++) {
-                                    sleep(time: 5, unit: 'SECONDS')
-                                    def progressRequest = groovy.json.JsonOutput.toJson([
-                                            token_access: env.DEPLOY_TOKEN,
-                                            website_id: env.WEBSITE_ID
-                                    ])
-                                    writeFile file: '.delcom-progress.json', text: progressRequest
-
-                                    try {
-                                        def response = sh(
-                                                script: '''
-                                                    set -eu
-                                                    chmod 600 .delcom-progress.json
-                                                    curl --fail --silent --show-error \
-                                                        --header 'Content-Type: application/json' \
-                                                        --data-binary @.delcom-progress.json \
-                                                        "$URL_PROGRESS"
-                                                ''',
-                                                returnStdout: true
-                                        ).trim()
-                                        def result = readJSON text: response
-                                        deploymentStatus = result?.data?.status?.toString()?.toUpperCase()
-
-                                        if (deploymentStatus == 'SUCCESS') {
-                                            echo 'Deployment Delcom berhasil.'
-                                            break
-                                        }
-                                        if (deploymentStatus == 'FAIL') {
-                                            error("Deployment Delcom gagal: ${result?.data?.log ?: 'tidak ada log dari server'}")
-                                        }
-                                        if (deploymentStatus != 'IN_PROGRESS') {
-                                            error("Status deployment Delcom tidak dikenal: ${deploymentStatus}")
-                                        }
-                                        echo "Deployment masih berjalan (${attempt}/120)."
-                                    } finally {
-                                        sh 'rm -f .delcom-progress.json'
-                                    }
-                                }
-
-                                if (deploymentStatus != 'SUCCESS') {
-                                    error('Deployment Delcom melewati batas waktu 15 menit.')
-                                }
-                            }
-                        } finally {
-                            sh 'rm -f .delcom-redeploy.json .delcom-progress.json'
-                        }
-                    }
+                    echo ""
+                    echo "=========================================="
+                    echo "       DEPLOYMENT FINISHED"
+                    echo "=========================================="
                 }
             }
         }
     }
 
+    // ================================================================
+    // POST ACTIONS
+    // ================================================================
     post {
+
         always {
-            archiveArtifacts artifacts: 'target/site/jacoco/**,trivy-results.sarif',
-                    allowEmptyArchive: true
+            archiveArtifacts(
+                artifacts: 'trivy-results.sarif',
+                allowEmptyArchive: true
+            )
         }
+
         success {
-            echo "Pipeline berhasil: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            echo "=========================================="
+            echo "       ✅ PIPELINE SUCCESS"
+            echo "=========================================="
+            echo "Result: ${currentBuild.currentResult}"
+            echo "📦 Artifact: ${env.ARTIFACT_URL ?: '(not published)'}"
+            echo "🚀 Aplikasi Spring Boot berhasil dideploy."
         }
+
         failure {
-            echo 'Pipeline gagal. Periksa stage yang gagal dan Console Output.'
+            echo "=========================================="
+            echo "       ❌ PIPELINE FAILED"
+            echo "=========================================="
+            echo "Result: ${currentBuild.currentResult}"
+            echo "Periksa log stage yang merah / Console Output untuk penyebab gagal."
+        }
+
+        unstable {
+            echo "=========================================="
+            echo "       ⚠️ PIPELINE UNSTABLE"
+            echo "=========================================="
+            echo "Result: ${currentBuild.currentResult}"
         }
     }
 }
